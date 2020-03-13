@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/tdewolff/canvas"
-	"math"
 	"os"
 	"strings"
 )
@@ -127,7 +126,9 @@ func initCanvas(width float64, height float64) {
 
 func renderSections(sections [][]Line, c *canvas.Context) {
 	for i := range sections {
-		renderSection(sections[i], c)
+		if sections[i][0].tags[0].name == "comment" {
+			renderSection(sections[i], c)
+		}
 	}
 }
 
@@ -135,10 +136,36 @@ func renderSection(section []Line, c *canvas.Context) {
 	//setUp canvas
 	c.SetFillColor(canvas.White)
 	fmt.Println(calcFontSize(section), " in ", section[0].tags)
-	//find font size
 
 }
 
 func calcFontSize(section []Line) (pnt float64) {
 
+	fontSize := 12.0
+	fontHeight := 0.0
+	fontWidth := 0.0
+	var face canvas.FontFace
+
+	longestLine := ""
+	for i := range section {
+		if len(section[i].lyrics) > len(longestLine) {
+			longestLine = section[i].lyrics
+		}
+	}
+
+	if !strings.ContainsAny(longestLine, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM") {
+		return fontSize
+	}
+
+	for fontWidth < canva.W && (fontHeight*2.0*float64(len(section)-1) < canva.H) {
+		face = fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+		box := canvas.NewTextLine(face, longestLine, canvas.Left)
+
+		fontHeight = box.Bounds().H
+		fontWidth = box.Bounds().W
+
+		fontSize += 3
+		//fmt.Printf("Testing font %f \n", fontSize)
+	}
+	return fontSize
 }
