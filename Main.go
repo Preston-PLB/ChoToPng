@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"github.com/tdewolff/canvas"
+	"math"
 	"os"
 	"strings"
 )
@@ -14,8 +16,9 @@ type Line struct {
 }
 
 type Chord struct {
-	name         string
-	anchorOffset int
+	name        string
+	charOffset  int
+	pixelOffset float64
 }
 
 type Tag struct {
@@ -93,7 +96,7 @@ func parseLine(byteLine string) (line Line) {
 					break
 				}
 			}
-			chord := Chord{string(chordName), i}
+			chord := Chord{string(chordName), i, 0.0}
 			line.chords = append(line.chords, chord)
 		} else {
 			if byteLine[i] != '\r' {
@@ -129,6 +132,13 @@ func renderSections(sections [][]Line, c *canvas.Context) {
 }
 
 func renderSection(section []Line, c *canvas.Context) {
+	//setUp canvas
 	c.SetFillColor(canvas.White)
+	fmt.Println(calcFontSize(section), " in ", section[0].tags)
+	//find font size
+
+}
+
+func calcFontSize(section []Line) (pnt float64) {
 
 }
