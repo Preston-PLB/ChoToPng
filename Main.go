@@ -135,16 +135,26 @@ func renderSections(sections [][]Line, c *canvas.Context) {
 func renderSection(section []Line, c *canvas.Context) {
 	//setUp canvas
 	c.SetFillColor(canvas.White)
-	fmt.Println(calcFontSize(section), " in ", section[0].tags)
+	fontSize, hMax, wMax := calcFontSize(section)
 
+	calcPixelOffset(&section, fontSize)
+
+	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+	line :=
 }
 
-func calcFontSize(section []Line) (pnt float64) {
+func getTextBoxBounds(fontSize float64, str string) canvas.Rect {
+	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+	box := canvas.NewTextBox(face, str, canva.H, canva.W, canvas.Left, canvas.Top, 0.0, 0.0)
+
+	return box.Bounds()
+}
+
+func calcFontSize(section []Line) (pnt, hMax, wMax float64) {
 
 	fontSize := 12.0
 	fontHeight := 0.0
 	fontWidth := 0.0
-	var face canvas.FontFace
 
 	longestLine := ""
 	for i := range section {
@@ -154,18 +164,28 @@ func calcFontSize(section []Line) (pnt float64) {
 	}
 
 	if !strings.ContainsAny(longestLine, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM") {
-		return fontSize
+		return fontSize, 0.0, 0.0
 	}
 
 	for fontWidth < canva.W && (fontHeight*2.0*float64(len(section)-1) < canva.H) {
-		face = fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
-		box := canvas.NewTextLine(face, longestLine, canvas.Left)
+		size := getTextBoxBounds(fontSize, longestLine)
 
-		fontHeight = box.Bounds().H
-		fontWidth = box.Bounds().W
+		fontHeight = size.H
+		fontWidth = size.W
 
 		fontSize += 3
 		//fmt.Printf("Testing font %f \n", fontSize)
 	}
-	return fontSize
+	return fontSize, fontHeight, fontWidth
+}
+
+func calcPixelOffset(section *[]Line, fontSize float64){
+	for i := range *section {
+		if len((*section)[i].tags) == 0 {
+			for j := range (*section)[i].chords {
+				line := &(*section)[i]
+				line.chords[j].pixelOffset = getTextBoxBounds(fontSize, line.lyrics[0:line.chords[j].charOffset]).W
+			}
+		}
+	}
 }
