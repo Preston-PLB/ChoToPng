@@ -2,16 +2,19 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/tdewolff/canvas"
 	"os"
 	"strings"
 )
 
+type Section struct {
+	lines []Line
+	tags  []Tag
+}
+
 type Line struct {
 	lyrics string
 	chords []Chord
-	tags   []Tag
 }
 
 type Chord struct {
@@ -40,51 +43,36 @@ func main() {
 	handle(err)
 	scanner := bufio.NewScanner(file)
 
-	var lines []Line
+	var sections []Section
+
+	var section = Section{}
 
 	for scanner.Scan() {
 		if strings.HasPrefix(scanner.Text(), "CCLI") {
 			break
+		} else if strings.HasPrefix(scanner.Text(), "{") {
+			section.tags = append(section.tags, parseTag(scanner.Text()))
+		} else if len(scanner.Text()) > 0 {
+			section.lines = append(section.lines, parseLine(scanner.Text()))
+		} else {
+			sections = append(sections, section)
+			section = Section{}
 		}
-		lines = append(lines, parseLine(scanner.Text()))
-	}
 
-	sections := splitSections(lines)
+	}
 
 	initCanvas(3840, 1770)
 	renderSections(sections, context)
 }
 
-func splitSections(lines []Line) (sections [][]Line) {
-	var section []Line
-	for i := range lines {
-
-		if len(lines[i].tags) > 0 {
-			if lines[i].tags[0].name == "comment" {
-				sections = append(sections, section)
-				section = nil
-			}
-		}
-
-		section = append(section, lines[i])
-	}
-	sections = append(sections, section)
-
-	return sections
+func parseTag(byteLine string) (tag Tag) {
+	raw := strings.Split(byteLine, ": ")
+	return Tag{raw[0], raw[1]}
 }
 
 func parseLine(byteLine string) (line Line) {
 	var lyricRaw []byte
 	for i := 0; i < len(byteLine); i++ {
-		if byteLine[i] == '{' {
-			str := string(byteLine[i+1 : len(byteLine)-1])
-			raw := strings.Split(str, ": ")
-
-			tag := Tag{raw[0], raw[1]}
-			line.tags = append(line.tags, tag)
-			return line
-		}
-
 		if byteLine[i] == '[' {
 			var chordName []byte
 			for j := i + 1; j < len(byteLine); j++ {
@@ -135,12 +123,12 @@ func renderSections(sections [][]Line, c *canvas.Context) {
 func renderSection(section []Line, c *canvas.Context) {
 	//setUp canvas
 	c.SetFillColor(canvas.White)
-	fontSize, hMax, wMax := calcFontSize(section)
-
-	calcPixelOffset(&section, fontSize)
-
-	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
-	line :=
+	//fontSize, hMax, wMax := calcFontSize(section)
+	//
+	//calcPixelOffset(&section, fontSize)
+	//
+	//face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+	//line :=
 }
 
 func getTextBoxBounds(fontSize float64, str string) canvas.Rect {
@@ -179,13 +167,6 @@ func calcFontSize(section []Line) (pnt, hMax, wMax float64) {
 	return fontSize, fontHeight, fontWidth
 }
 
-func calcPixelOffset(section *[]Line, fontSize float64){
-	for i := range *section {
-		if len((*section)[i].tags) == 0 {
-			for j := range (*section)[i].chords {
-				line := &(*section)[i]
-				line.chords[j].pixelOffset = getTextBoxBounds(fontSize, line.lyrics[0:line.chords[j].charOffset]).W
-			}
-		}
-	}
+func calcPixelOffset(section *[]Line, fontSize float64) {
+
 }
