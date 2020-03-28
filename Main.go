@@ -14,7 +14,7 @@ type Section struct {
 
 type Line struct {
 	lyrics string
-	chords []Chord
+	chords *[]Chord
 }
 
 type Chord struct {
@@ -35,8 +35,9 @@ func handle(err error) {
 }
 
 var fontFamily *canvas.FontFamily
-var canva *canvas.Canvas
-var context *canvas.Context
+
+//var canva *canvas.Canvas
+//var context *canvas.Context
 
 func main() {
 	file, err := os.Open("overcome-A.cho")
@@ -61,13 +62,12 @@ func main() {
 
 	}
 
-	initCanvas(3840, 1770)
-	renderSections(sections, context)
+	renderSections(sections)
 }
 
 func parseTag(byteLine string) (tag Tag) {
 	raw := strings.Split(byteLine, ": ")
-	return Tag{raw[0], raw[1]}
+	return Tag{raw[0][1:], raw[1][0 : len(raw[1])-1]}
 }
 
 func parseLine(byteLine string) (line Line) {
@@ -84,7 +84,7 @@ func parseLine(byteLine string) (line Line) {
 				}
 			}
 			chord := Chord{string(chordName), i, 0.0}
-			line.chords = append(line.chords, chord)
+			*line.chords = append(*line.chords, chord)
 		} else {
 			if byteLine[i] != '\r' {
 				lyricRaw = append(lyricRaw, byteLine[i])
@@ -101,53 +101,78 @@ func parseLine(byteLine string) (line Line) {
 // Grapphical Stuff and things
 //
 
-func initCanvas(width float64, height float64) {
+func initCanvas(width float64, height float64) (c *canvas.Canvas, context *canvas.Context) {
 	fontFamily = canvas.NewFontFamily("Ubuntu")
 	fontFamily.Use(canvas.CommonLigatures)
 	if err := fontFamily.LoadFontFile("C:\\Windows\\Fonts\\Ubuntu-M.ttf", canvas.FontRegular); err != nil {
 		panic(err)
 	}
 
-	canva = canvas.New(width, height)
-	context = canvas.NewContext(canva)
+	c = canvas.New(width, height)
+	context = canvas.NewContext(c)
+
+	return c, context
 }
 
-func renderSections(sections [][]Line, c *canvas.Context) {
+func renderSections(sections []Section) {
 	for i := range sections {
-		if sections[i][0].tags[0].name == "comment" {
-			renderSection(sections[i], c)
+		if len(sections[i].tags) > 0 && sections[i].tags[0].name == "comment" {
+			renderSection(sections[i])
 		}
 	}
 }
 
-func renderSection(section []Line, c *canvas.Context) {
+func renderSection(section Section) {
+
+	c, ctx := initCanvas(3840, 1770)
+
 	//setUp canvas
-	c.SetFillColor(canvas.White)
-	//fontSize, hMax, wMax := calcFontSize(section)
-	//
-	//calcPixelOffset(&section, fontSize)
-	//
-	//face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
-	//line :=
+	ctx.SetFillColor(canvas.White)
+	fontSize, hMax, wMax := calcFontSize(section, c)
+
+	calcPixelOffset(&section, fontSize, c)
+
+	lineOffset := hMax / float64(len(section.lines)*2)
+	yOffset := (ctx.Height() - hMax) / 2
+	xOffset := (ctx.Width() - wMax) / 2
+
+	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+
+	for i := range section.lines {
+		line := section.lines[i]
+		for j := range *line.chords {
+			chord := *line.chords
+			chordLine := canvas.NewTextLine(face, chord[j].name, canvas.Left)
+			ctx.DrawText(xOffset+chord[j].pixelOffset, (lineOffset*float64(i))+yOffset, chordLine)
+		}
+		lineBox := canvas.NewTextLine(face, line.lyrics, canvas.Left)
+		ctx.DrawText(xOffset, (lineOffset*float64(i))+yOffset+lineOffset, lineBox)
+	}
+
+	err := c.SavePNG(section.tags[0].name+".png", 5.0)
+
+	handle(err)
 }
 
-func getTextBoxBounds(fontSize float64, str string) canvas.Rect {
+func getTextBoxBounds(fontSize float64, str string, c *canvas.Canvas) canvas.Rect {
 	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
-	box := canvas.NewTextBox(face, str, canva.H, canva.W, canvas.Left, canvas.Top, 0.0, 0.0)
+	box := canvas.NewTextBox(face, str, c.H, c.W, canvas.Left, canvas.Top, 0.0, 0.0)
 
 	return box.Bounds()
 }
 
-func calcFontSize(section []Line) (pnt, hMax, wMax float64) {
+func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 
-	fontSize := 12.0
+	fontSize := 100.0
 	fontHeight := 0.0
 	fontWidth := 0.0
 
+	lines := section.lines
+
 	longestLine := ""
-	for i := range section {
-		if len(section[i].lyrics) > len(longestLine) {
-			longestLine = section[i].lyrics
+	for i := range lines {
+		if len(lines[i].lyrics) > len(longestLine) {
+			longestLine = lines[i].lyrics
 		}
 	}
 
@@ -155,8 +180,8 @@ func calcFontSize(section []Line) (pnt, hMax, wMax float64) {
 		return fontSize, 0.0, 0.0
 	}
 
-	for fontWidth < canva.W && (fontHeight*2.0*float64(len(section)-1) < canva.H) {
-		size := getTextBoxBounds(fontSize, longestLine)
+	for fontWidth < c.W && (fontHeight*2.0*float64(len(lines)-1) < c.H) {
+		size := getTextBoxBounds(fontSize, longestLine, c)
 
 		fontHeight = size.H
 		fontWidth = size.W
@@ -167,6 +192,13 @@ func calcFontSize(section []Line) (pnt, hMax, wMax float64) {
 	return fontSize, fontHeight, fontWidth
 }
 
-func calcPixelOffset(section *[]Line, fontSize float64) {
-
+func calcPixelOffset(section *Section, fontSize float64, c *canvas.Canvas) {
+	lines := section.lines
+	for i := range lines {
+		line := lines[i]
+		for j := range *line.chords {
+			chord := *line.chords
+			chord[j].pixelOffset = getTextBoxBounds(fontSize, lines[j].lyrics[0:chord[j].charOffset], c).W
+		}
+	}
 }
