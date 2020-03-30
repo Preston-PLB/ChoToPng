@@ -185,10 +185,6 @@ func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 		}
 	}
 
-	if !strings.ContainsAny(longestLine, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM") {
-		return fontSize, 0.0, 0.0
-	}
-
 	for fontWidth < c.W && (fontHeight*2.0*float64(len(lines)) < c.H) {
 		size := getTextBoxBounds(fontSize, longestLine, c)
 
