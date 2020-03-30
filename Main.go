@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"github.com/tdewolff/canvas"
+	"math"
 	"os"
 	"strings"
 )
@@ -14,13 +15,17 @@ type Section struct {
 
 type Line struct {
 	lyrics string
-	chords *[]Chord
+	chords []*Chord
 }
 
 type Chord struct {
 	name        string
 	charOffset  int
 	pixelOffset float64
+}
+
+func (chord *Chord) calcPixelOffset(lyrics string, fontSize float64, c *canvas.Canvas) {
+	chord.pixelOffset = getTextBoxBounds(fontSize, lyrics[0:chord.charOffset], c).W
 }
 
 type Tag struct {
@@ -72,7 +77,7 @@ func parseTag(byteLine string) (tag Tag) {
 
 func parseLine(byteLine string) (line Line) {
 	var lyricRaw []byte
-	for i := 0; i < len(byteLine); i++ {
+	for i, k := 0, 0; i < len(byteLine); i++ {
 		if byteLine[i] == '[' {
 			var chordName []byte
 			for j := i + 1; j < len(byteLine); j++ {
@@ -83,12 +88,14 @@ func parseLine(byteLine string) (line Line) {
 					break
 				}
 			}
-			chord := Chord{string(chordName), i, 0.0}
-			*line.chords = append(*line.chords, chord)
+			chord := Chord{string(chordName), k, 0.0}
+			line.chords = append(line.chords, new(Chord))
+			line.chords[len(line.chords)-1] = &chord
 		} else {
 			if byteLine[i] != '\r' {
 				lyricRaw = append(lyricRaw, byteLine[i])
 			}
+			k++
 		}
 	}
 
@@ -115,9 +122,9 @@ func initCanvas(width float64, height float64) (c *canvas.Canvas, context *canva
 }
 
 func renderSections(sections []Section) {
-	for i := range sections {
-		if len(sections[i].tags) > 0 && sections[i].tags[0].name == "comment" {
-			renderSection(sections[i])
+	for _, section := range sections {
+		if len(section.tags) > 0 && section.tags[0].name == "comment" {
+			renderSection(section)
 		}
 	}
 }
@@ -132,31 +139,33 @@ func renderSection(section Section) {
 
 	calcPixelOffset(&section, fontSize, c)
 
-	lineOffset := hMax / float64(len(section.lines)*2)
-	yOffset := (ctx.Height() - hMax) / 2
-	xOffset := (ctx.Width() - wMax) / 2
+	lineOffset := hMax
+	yOffset := math.Max((ctx.Height()-float64(len(section.lines)*2)*hMax)/2, 0)
+	xOffset := math.Max((ctx.Width()-wMax)/2, 0)
 
 	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
 
-	for i := range section.lines {
-		line := section.lines[i]
-		for j := range *line.chords {
-			chord := *line.chords
-			chordLine := canvas.NewTextLine(face, chord[j].name, canvas.Left)
-			ctx.DrawText(xOffset+chord[j].pixelOffset, (lineOffset*float64(i))+yOffset, chordLine)
+	i := 0
+	for _, line := range section.lines {
+		for _, chord := range line.chords {
+			chordLine := canvas.NewTextLine(face, chord.name, canvas.Left)
+			y := (c.H - yOffset) - (lineOffset * float64(i))
+			ctx.DrawText(xOffset+chord.pixelOffset, y, chordLine)
 		}
+		y := (c.H - yOffset) - (lineOffset * float64(i+1))
 		lineBox := canvas.NewTextLine(face, line.lyrics, canvas.Left)
-		ctx.DrawText(xOffset, (lineOffset*float64(i))+yOffset+lineOffset, lineBox)
+		ctx.DrawText(xOffset, y, lineBox)
+		i += 2
 	}
 
-	err := c.SavePNG(section.tags[0].name+".png", 5.0)
+	err := c.SavePNG(section.tags[0].value+".png", 1.0)
 
 	handle(err)
 }
 
 func getTextBoxBounds(fontSize float64, str string, c *canvas.Canvas) canvas.Rect {
 	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
-	box := canvas.NewTextBox(face, str, c.H, c.W, canvas.Left, canvas.Top, 0.0, 0.0)
+	var box = canvas.NewTextLine(face, str, canvas.Left)
 
 	return box.Bounds()
 }
@@ -170,9 +179,9 @@ func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 	lines := section.lines
 
 	longestLine := ""
-	for i := range lines {
-		if len(lines[i].lyrics) > len(longestLine) {
-			longestLine = lines[i].lyrics
+	for _, line := range lines {
+		if len(line.lyrics) > len(longestLine) {
+			longestLine = line.lyrics
 		}
 	}
 
@@ -180,25 +189,22 @@ func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 		return fontSize, 0.0, 0.0
 	}
 
-	for fontWidth < c.W && (fontHeight*2.0*float64(len(lines)-1) < c.H) {
+	for fontWidth < c.W && (fontHeight*2.0*float64(len(lines)) < c.H) {
 		size := getTextBoxBounds(fontSize, longestLine, c)
 
 		fontHeight = size.H
 		fontWidth = size.W
 
-		fontSize += 3
+		fontSize += 1
 		//fmt.Printf("Testing font %f \n", fontSize)
 	}
-	return fontSize, fontHeight, fontWidth
+	return fontSize - 1, fontHeight, fontWidth
 }
 
 func calcPixelOffset(section *Section, fontSize float64, c *canvas.Canvas) {
-	lines := section.lines
-	for i := range lines {
-		line := lines[i]
-		for j := range *line.chords {
-			chord := *line.chords
-			chord[j].pixelOffset = getTextBoxBounds(fontSize, lines[j].lyrics[0:chord[j].charOffset], c).W
+	for _, line := range section.lines {
+		for _, chord := range line.chords {
+			chord.calcPixelOffset(line.lyrics, fontSize, c)
 		}
 	}
 }
