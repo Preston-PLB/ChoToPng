@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"github.com/tdewolff/canvas"
+	"github.com/tdewolff/canvas/rasterizer"
 	"math"
 	"os"
 	"strings"
@@ -44,8 +45,22 @@ var fontFamily *canvas.FontFamily
 //var canva *canvas.Canvas
 //var context *canvas.Context
 
+var outPath = ""
+
 func main() {
-	file, err := os.Open("overcome-A.cho")
+	renderSong("overcome-A.cho")
+}
+
+func getName(stringPath string) (name string) {
+	lastSlash := int(math.Max(0, float64(strings.LastIndex(stringPath, "/"))))
+	lastDot := strings.LastIndex(stringPath, ".cho")
+
+	return stringPath[lastSlash+1 : lastDot]
+}
+
+func renderSong(filePath string) {
+	file, err := os.Open(filePath)
+	outPath = filePath
 	handle(err)
 	scanner := bufio.NewScanner(file)
 
@@ -54,18 +69,21 @@ func main() {
 	var section = Section{}
 
 	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "CCLI") {
+		text := scanner.Text()
+		if strings.HasPrefix(text, "CCLI") {
 			break
-		} else if strings.HasPrefix(scanner.Text(), "{") {
-			section.tags = append(section.tags, parseTag(scanner.Text()))
-		} else if len(scanner.Text()) > 0 {
-			section.lines = append(section.lines, parseLine(scanner.Text()))
+		} else if strings.HasPrefix(text, "{") {
+			section.tags = append(section.tags, parseTag(text))
+		} else if len(text) > 0 {
+			section.lines = append(section.lines, parseLine(text))
 		} else {
 			sections = append(sections, section)
 			section = Section{}
 		}
 
 	}
+	sections = append(sections, section)
+	section = Section{}
 
 	renderSections(sections)
 }
@@ -111,7 +129,7 @@ func parseLine(byteLine string) (line Line) {
 func initCanvas(width float64, height float64) (c *canvas.Canvas, context *canvas.Context) {
 	fontFamily = canvas.NewFontFamily("Ubuntu")
 	fontFamily.Use(canvas.CommonLigatures)
-	if err := fontFamily.LoadFontFile("C:\\Windows\\Fonts\\Ubuntu-M.ttf", canvas.FontRegular); err != nil {
+	if err := fontFamily.LoadFontFile("/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf", canvas.FontRegular); err != nil {
 		panic(err)
 	}
 
@@ -131,24 +149,25 @@ func renderSections(sections []Section) {
 
 func renderSection(section Section) {
 
-	c, ctx := initCanvas(3840, 1770)
+	c, ctx := initCanvas(1920, 1080)
 
 	//setUp canvas
-	ctx.SetFillColor(canvas.White)
+	ctx.SetFillColor(canvas.Black)
 	fontSize, hMax, wMax := calcFontSize(section, c)
 
 	calcPixelOffset(&section, fontSize, c)
 
-	lineOffset := hMax
+	lineOffset := math.Max(hMax, 0)
 	yOffset := math.Max((ctx.Height()-float64(len(section.lines)*2)*hMax)/2, 0)
 	xOffset := math.Max((ctx.Width()-wMax)/2, 0)
 
-	face := fontFamily.Face(fontSize, canvas.Black, canvas.FontRegular, canvas.FontNormal)
+	face := fontFamily.Face(fontSize, canvas.White, canvas.FontRegular, canvas.FontNormal)
+	chordFace := fontFamily.Face(fontSize-40, canvas.White, canvas.FontRegular, canvas.FontNormal)
 
 	i := 0
 	for _, line := range section.lines {
 		for _, chord := range line.chords {
-			chordLine := canvas.NewTextLine(face, chord.name, canvas.Left)
+			chordLine := canvas.NewTextLine(chordFace, chord.name, canvas.Left)
 			y := (c.H - yOffset) - (lineOffset * float64(i))
 			ctx.DrawText(xOffset+chord.pixelOffset, y, chordLine)
 		}
@@ -158,7 +177,9 @@ func renderSection(section Section) {
 		i += 2
 	}
 
-	err := c.SavePNG(section.tags[0].value+".png", 1.0)
+	name := section.tags[0].value
+
+	err := c.WriteFile(name+".png", rasterizer.PNGWriter(1.0))
 
 	handle(err)
 }
@@ -172,7 +193,7 @@ func getTextBoxBounds(fontSize float64, str string, c *canvas.Canvas) canvas.Rec
 
 func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 
-	fontSize := 100.0
+	fontSize := 12.0
 	fontHeight := 0.0
 	fontWidth := 0.0
 
@@ -183,6 +204,10 @@ func calcFontSize(section Section, c *canvas.Canvas) (pnt, hMax, wMax float64) {
 		if len(line.lyrics) > len(longestLine) {
 			longestLine = line.lyrics
 		}
+	}
+
+	if !strings.ContainsAny(longestLine, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM") {
+		return fontSize, 0.0, 0.0
 	}
 
 	for fontWidth < c.W && (fontHeight*2.0*float64(len(lines)) < c.H) {
